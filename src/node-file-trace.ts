@@ -7,6 +7,7 @@ import { isMatch } from 'micromatch';
 import { sharedLibEmit } from './utils/sharedlib-emit';
 import { join } from 'path';
 import { Sema } from 'async-sema';
+import * as url from "url";
 
 const fsReadFile = fs.promises.readFile;
 const fsReadlink = fs.promises.readlink;
@@ -240,17 +241,39 @@ export class Job {
       return;
     }
 
+    let queryString: string | null = null;
+    try {
+      // Store the querystring (including the leading `?`, in order to distinguish it from any
+      // similar values in the path itself) so that it can be restored if it gets stripped during
+      // resolution.
+      queryString = url.parse(dep).search;
+    } catch (e: any) {
+      this.warnings.add(new Error(`Failed to parse dependency ${dep} for querystring:\n${e && e.message}`));
+    }
+
     if (Array.isArray(resolved)) {
       for (const item of resolved) {
-        // ignore builtins
-        if (item.startsWith('node:')) return;
-        await this.emitDependency(item, path);
+        await this.emitResolved(item, queryString, path);
       }
     } else {
-      // ignore builtins
-      if (resolved.startsWith('node:')) return;
-      await this.emitDependency(resolved, path);
+      await this.emitResolved(resolved, queryString, path);
     }
+  }
+
+  private emitResolved (resolvedPath: string, queryString: string | null, parent?: string): Promise<void> {
+    // ignore builtins
+    if (resolvedPath.startsWith('node:')) {
+      return Promise.resolve();
+    }
+
+    // Dependencies which differ only by querystring are considered separate dependencies by
+    // webpack, and therefore need to be treated separately here, too. Resolution can strip
+    // the querystring off, in which case we need to put it back on to preserve the distinction.
+    if (queryString && !resolvedPath.endsWith(queryString)) {
+      resolvedPath += queryString
+    }
+
+    return this.emitDependency(resolvedPath, parent)
   }
 
   async resolve (id: string, parent: string, job: Job, cjsResolve: boolean): Promise<string | string[]> {
