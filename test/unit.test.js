@@ -217,3 +217,69 @@ for (const { testName, isRoot } of unitTests) {
     }
   });
 }
+
+it(`should correctly trace esm file with query string`, async () => {
+  // We simulate the case where a module has different content for different query strings
+  const readFileMock = jest.fn(function() {
+    const [id] = arguments;
+
+   if(id.endsWith('input.js')) {
+    return `import base from './base?__withQuery';
+console.log(base.hello);`;
+   }
+
+   if(id.endsWith('base.js?__withQuery')) {
+    return `import other from './base';
+export var hello = other.hello;`;
+  }
+
+  if(id.endsWith('base.js')) {
+    return `export var hello = 'hello!';`;
+  }
+
+
+    throw new Error('invalid file');
+   });
+
+   const statMock = (path) => {
+    return {
+      isFile: () => path.includes('.js'),
+    };
+   };
+
+  const nftCache = {}
+  const expected = ['base.js', 'input.js', 'package.json'];
+  
+  const doTrace = async () => {
+    let inputFileNames = ["input.js"];
+    
+    const { fileList, reasons } = await nodeFileTrace(
+      inputFileNames,
+      {
+        processCwd: __dirname,
+        cache: nftCache,
+        ts: true,
+        log: true,
+        mixedModules: true,
+        readFile: readFileMock,
+        stat: statMock,
+      }
+    );
+    
+    let sortedFileList = [...fileList].sort()
+    
+    try {
+      expect(sortedFileList).toEqual(expected);
+    }
+    catch (e) {
+      console.warn(reasons);
+      throw e;
+    }
+  }
+  await doTrace()
+
+  expect(nftCache.fileCache).toBeDefined()
+  expect(nftCache.statCache).toBeDefined()
+  expect(nftCache.symlinkCache).toBeDefined()
+  expect(nftCache.analysisCache).toBeDefined()
+});
