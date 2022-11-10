@@ -283,9 +283,14 @@ export class Job {
   async readFile (path: string): Promise<string | Buffer | null> {
     const cached = this.fileCache.get(path);
     if (cached !== undefined) return cached;
+
+    const filePath = path.includes("?")
+      ? path.slice(0, path.indexOf("?"))
+      : path;
+
     await this.fileIOQueue.acquire();
     try {
-      const source = (await fsReadFile(path)).toString();
+      const source = (await fsReadFile(filePath)).toString();
       this.fileCache.set(path, source);
       return source;
     }
