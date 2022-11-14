@@ -268,9 +268,15 @@ export class Job {
 
     // For simplicity, force `resolved` to be an array
     resolved = Array.isArray(resolved) ? resolved : [resolved];
-    for (const item of resolved) {
+    for (let item of resolved) {
       // ignore builtins
       if (item.startsWith('node:')) return;
+
+      // If querystring was stripped during resolution, restore it
+      if (queryString && !item.endsWith(queryString)) {
+        item += queryString;
+      }
+      
       await this.analyzeAndEmitDependency(item, path, cjsResolve);
     }
   }
