@@ -241,36 +241,19 @@ export class Job {
       return;
     }
 
-    let queryString: string | null = null;
-    try {
-      // Store the querystring (including the leading `?`, in order to distinguish it from any
-      // similar values in the path itself) so that it can be restored if it gets stripped during
-      // resolution.
-      queryString = url.parse(dep).search;
-    } catch (e: any) {
-      this.warnings.add(new Error(`Failed to parse dependency ${dep} for querystring:\n${e && e.message}`));
-    }
-
     if (Array.isArray(resolved)) {
       for (const item of resolved) {
-        await this.emitResolved(item, queryString, path);
+        await this.emitResolved(item, path);
       }
     } else {
-      await this.emitResolved(resolved, queryString, path);
+      await this.emitResolved(resolved, path);
     }
   }
 
-  private emitResolved (resolvedPath: string, queryString: string | null, parent?: string): Promise<void> {
+  private emitResolved (resolvedPath: string, parent?: string): Promise<void> {
     // ignore builtins
     if (resolvedPath.startsWith('node:')) {
       return Promise.resolve();
-    }
-
-    // Dependencies which differ only by querystring are considered separate dependencies by
-    // webpack, and therefore need to be treated separately here, too. Resolution can strip
-    // the querystring off, in which case we need to put it back on to preserve the distinction.
-    if (queryString && !resolvedPath.endsWith(queryString)) {
-      resolvedPath += queryString
     }
 
     return this.emitDependency(resolvedPath, parent)
