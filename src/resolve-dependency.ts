@@ -1,5 +1,6 @@
-import { isAbsolute, resolve, sep, dirname, basename } from 'path';
+import { isAbsolute, resolve, sep } from 'path';
 import { Job } from './node-file-trace';
+import { getReadableFilePath } from './utils/get-file-for-import-path';
 
 // node resolver
 // custom implementation to emit only needed package.json files for resolver
@@ -37,27 +38,12 @@ async function resolvePath (path: string, parent: string, job: Job): Promise<str
 async function resolveFile (path: string, parent: string, job: Job): Promise<string | undefined> {
   if (path.endsWith('/')) return undefined;
   path = await job.realpath(path, parent);
-  if (await job.isFile(path)) return path;
+  const { filePath, fileQuery } = getReadableFilePath(path);
 
-  const dir = dirname(path);
-  const fullFile = basename(path);
-  const fileQuery = fullFile.includes('?') ? fullFile.slice(fullFile.indexOf('?')) : '';
-  const file = fullFile.includes('?') ? fullFile.slice(0, fullFile.indexOf('?')) : fullFile;
-  const filePath = `${dir}/${file}`;
+  if (await job.isFile(filePath)) return path;
 
-  const fullFileName = await getFullFileName(filePath, job);
-
+  const fullFileName = await job.getFullFileName(filePath);
   return fullFileName ? `${fullFileName}${fileQuery}` : undefined;
-}
-
-async function getFullFileName (path: string, job: Job): Promise<string | undefined> {
-  if (job.ts && path.startsWith(job.base) && path.slice(job.base.length).indexOf(sep + 'node_modules' + sep) === -1 && await job.isFile(path + '.ts')) return path + '.ts';
-  if (job.ts && path.startsWith(job.base) && path.slice(job.base.length).indexOf(sep + 'node_modules' + sep) === -1 && await job.isFile(path + '.tsx')) return path + '.tsx';
-  if (await job.isFile(path + '.js')) return path + '.js';
-  if (await job.isFile(path + '.json')) return path + '.json';
-  if (await job.isFile(path + '.node')) return path + '.node';
-
-  return undefined;
 }
 
 async function resolveDir (path: string, parent: string, job: Job) {

@@ -7,7 +7,7 @@ import { isMatch } from 'micromatch';
 import { sharedLibEmit } from './utils/sharedlib-emit';
 import { join } from 'path';
 import { Sema } from 'async-sema';
-import * as url from "url";
+import { getReadableFilePath } from './utils/get-file-for-import-path';
 
 const fsReadFile = fs.promises.readFile;
 const fsReadlink = fs.promises.readlink;
@@ -267,9 +267,7 @@ export class Job {
     const cached = this.fileCache.get(path);
     if (cached !== undefined) return cached;
 
-    const filePath = path.includes("?")
-      ? path.slice(0, path.indexOf("?"))
-      : path;
+    const { filePath } = getReadableFilePath(path);
 
     await this.fileIOQueue.acquire();
     try {
@@ -329,8 +327,11 @@ export class Job {
     } else if (!reasonEntry.type.includes(reasonType)) {
       reasonEntry.type.push(reasonType)
     }
+
+    const { filePath }  = getReadableFilePath(path);
+
     if (parent && this.ignoreFn(path, parent)) {
-      if (!this.fileList.has(path) && reasonEntry) {
+      if (!this.fileList.has(filePath) && reasonEntry) {
         reasonEntry.ignored = true;
       }
       return false;
@@ -338,7 +339,7 @@ export class Job {
     if (parent) {
       reasonEntry.parents.add(parent);
     }
-    this.fileList.add(path);
+    this.fileList.add(filePath);
     return true;
   }
 
@@ -396,7 +397,8 @@ export class Job {
     const { deps, imports, assets, isESM } = analyzeResult;
 
     if (isESM) {
-      this.esmFileList.add(relative(this.base, path));
+      const { filePath } = getReadableFilePath(relative(this.base, path))
+      this.esmFileList.add(filePath);
     }
     
     await Promise.all([
@@ -412,4 +414,18 @@ export class Job {
       ...[...imports].map(async dep => this.maybeEmitDep(dep, path, false)),
     ]);
   }
+
+  async getFullFileName (path: string): Promise<string | undefined> {
+    if (this.ts && path.startsWith(this.base) && path.slice(this.base.length).indexOf(sep + 'node_modules' + sep) === -1) {
+      if( await this.isFile(path + '.ts')) return path + '.ts';
+      if(await this.isFile(path + '.tsx')) return path + '.tsx';
+    }
+
+    if (await this.isFile(path + '.js')) return path + '.js';
+    if (await this.isFile(path + '.json')) return path + '.json';
+    if (await this.isFile(path + '.node')) return path + '.node';
+  
+    return undefined;
+  }
+    
 }
